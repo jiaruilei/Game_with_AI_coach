@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Streamline • Pathline • Streakline — Interactive Game</title>
+<style>
+  :root{
+    --bg:#0c1623; --panel:#101c2b; --ink:#e8f0ff; --muted:#a9bbd9;
+    --accent:#40c4ff; --accent-2:#b388ff; --good:#2bd67b; --bad:#ff6363; --warn:#ffcf5c; --grid:#1a2a40;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+  .app{display:grid;grid-template-columns:330px 1fr;grid-template-rows:auto 1fr;grid-template-areas:"toolbar toolbar" "panel canvas";height:100vh}
+  header{grid-area:toolbar;display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid #0f2236;background:linear-gradient(180deg,#0f2032,#0d1b2b)}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.3px}
+  header .badge{font-size:12px;color:var(--muted)}
+  #status{margin-left:auto;font-size:14px;color:var(--muted)}
+  .panel{grid-area:panel;background:var(--panel);border-right:1px solid #0f2236;padding:14px 14px 18px;overflow:auto}
+  .group{margin-bottom:16px;padding-bottom:12px;border-bottom:1px dashed #223654}
+  .group:last-child{border-bottom:none}
+  .group h3{margin:0 0 8px 0;font-size:14px;color:#cfe2ff;text-transform:uppercase;letter-spacing:.8px}
+  label{display:flex;align-items:center;gap:8px;margin:6px 0 8px 0;font-size:14px;color:var(--ink)}
+  select,input[type="range"],button{width:100%;background:#0b1a29;color:var(--ink);border:1px solid #1e3350;border-radius:8px;padding:8px 10px;font-size:14px;outline:none}
+  input[type="range"]{padding:0;height:32px}
+  button{cursor:pointer;transition:.15s ease background,.15s ease transform}
+  button:hover{background:#0f2338}
+  button:active{transform:translateY(1px)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap}
+  .legend .chip{display:inline-flex;align-items:center;gap:8px;background:#0d1d30;border:1px solid #1d3556;border-radius:10px;padding:6px 10px;font-size:13px}
+  .legend .dot{width:14px;height:14px;border-radius:50%}
+  .dot.stream{background:#7fffd4}.dot.path{background:#90caf9}.dot.streak{background:#ff9cdf}.dot.seed{background:#ffd166}
+  .canvas-wrap{grid-area:canvas;position:relative}
+  canvas{display:block;width:100%;height:100%;background:conic-gradient(from 180deg at 50% 50%,#0c1726,#0b1a2b 40%,#0b1a2b 60%,#0c1726)}
+  .kbd{display:inline-block;border:1px solid #27476f;background:#0d1d30;border-radius:6px;padding:2px 6px;font-size:12px}
+  .score{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .score .s{background:#0d1d30;border:1px solid #1d3556;border-radius:8px;padding:6px 10px;font-size:13px}
+  .msg{margin-top:8px;padding:10px 12px;border-radius:10px;background:#0d1d30;border:1px solid #1f3656;font-size:13px;color:#d8e6ff}
+  .msg.good{border-color:#1e6f4e;color:#c9ffe3}.msg.bad{border-color:#6f1e1e;color:#ffd6d6}
+  .toggle-row{display:flex;gap:8px;align-items:center}
+  .toggle-row input[type=checkbox]{width:auto}
+  .callout{background:#0b1a29;border:1px solid #1e3350;border-radius:8px;padding:10px 10px;font-size:13px;color:#d6e7ff}
+  .disabled{opacity:.5;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>Streamline • Pathline • Streakline</h1>
+    <span class="badge">interactive teaching game</span>
+    <div id="status">Explore Mode</div>
+  </header>
+
+  <aside class="panel" aria-label="Controls">
+    <div class="group">
+      <h3>Flow &amp; Time</h3>
+      <label>Flow preset
+        <select id="flowPreset" aria-label="Flow preset">
+          <option value="meander">Meandering Jet (incompressible)</option>
+          <option value="saddle">Saddle / Hyperbolic</option>
+          <option value="vortex">Swirl + Drift</option>
+        </select>
+      </label>
+      <div class="row">
+        <label class="toggle-row">
+          <input type="checkbox" id="steadyToggle" />
+          <span>Steady flow</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="arrowsToggle" checked />
+          <span>Show arrows</span>
+        </label>
+      </div>
+      <label>Flow speed / time scale
+        <input type="range" id="speedSlider" min="0.2" max="3.0" step="0.1" value="1.0" />
+      </label>
+
+      <!-- NEW: Streak source ON/OFF -->
+      <div class="toggle-row" style="margin-top:6px">
+        <input type="checkbox" id="streakOnToggle" />
+        <span>Streak source ON <span class="kbd" title="Shortcut">O</span></span>
+      </div>
+
+      <div class="legend" aria-label="Legend" style="margin-top:8px">
+        <span class="chip"><span class="dot stream"></span>Streamline</span>
+        <span class="chip"><span class="dot path"></span>Pathline</span>
+        <span class="chip"><span class="dot streak"></span>Streakline</span>
+        <span class="chip"><span class="dot seed"></span>Seed / Source</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Explore Tools</h3>
+      <div class="row">
+        <button id="toolStreamBtn" title="S">Place Streamline</button>
+        <button id="toolPathBtn" title="P">Drop Path Particle</button>
+      </div>
+      <div class="row">
+        <button id="toolStreakBtn" title="K">Set Streak Source</button>
+        <button id="clearBtn" title="R">Clear</button>
+      </div>
+      <div style="font-size:13px;color:#a9bbd9">
+        Shortcuts: <span class="kbd">S</span> streamline · <span class="kbd">P</span> path ·
+        <span class="kbd">K</span> set source · <span class="kbd">O</span> toggle source · <span class="kbd">R</span> clear · <span class="kbd">Space</span> pause
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Quiz Mode</h3>
+      <div class="row">
+        <button id="modeExploreBtn">Explore Mode</button>
+        <button id="modeQuizBtn">Quiz Mode</button>
+      </div>
+      <div class="row">
+        <button id="quizStartBtn" class="disabled">Start Round</button>
+        <button id="quizExplainBtn" class="disabled">Explain</button>
+      </div>
+      <div class="row-3" style="margin-top:6px">
+        <button id="guessStreamBtn" class="disabled">Guess: Streamline</button>
+        <button id="guessPathBtn" class="disabled">Guess: Pathline</button>
+        <button id="guessStreakBtn" class="disabled">Guess: Streakline</button>
+      </div>
+      <div class="score">
+        <div class="s">Rounds: <span id="rounds">0</span></div>
+        <div class="s">Correct: <span id="correct">0</span></div>
+        <div class="s">Streak: <span id="streak">0</span></div>
+      </div>
+      <div id="quizMsg" class="msg" style="display:none"></div>
+      <div style="font-size:12px;color:#bed3ff">Quiz uses an unsteady flow so the three lines can differ.</div>
+    </div>
+
+    
+    <div class="group">
+      <h3>AI Coach (Prototype)</h3>
+      <div class="toggle-row">
+        <input type="checkbox" id="coachAutoToggle" checked />
+        <span>Auto coach</span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="coachExplainBtn">Explain current scene</button>
+        <button id="coachWhyBtn">Why S / P / K?</button>
+      </div>
+      <div id="coachBox" class="msg" style="display:none"></div>
+      <div class="callout" style="margin-top:8px">
+        Prototype hints are rule-based and run in-browser. This can later be connected to an approved AI endpoint.
+      </div>
+    </div>
+
+<div class="group">
+      <h3>Definitions</h3>
+      <div class="callout">
+        <b>Streamline:</b> curve tangent to the <i>instantaneous</i> velocity field.<br>
+        <b>Pathline:</b> trajectory of one fluid particle over time.<br>
+        <b>Streakline:</b> locus of particles that have passed a fixed source.
+      </div>
+    </div>
+  </aside>
+
+  <div class="canvas-wrap">
+    <canvas id="view" aria-label="Flow visualization"></canvas>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ===== Canvas / domain ===== */
+const canvas = document.getElementById("view");
+const ctx = canvas.getContext("2d", { alpha: false });
+let DPR = Math.max(1, window.devicePixelRatio || 1);
+const world = { Lx: 2.0, Ly: 1.0 }; // x∈[0,2], y∈[0,1]
+let view = { W: 0, H: 0 };
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  view.W = Math.max(600, rect.width | 0);
+  view.H = Math.max(420, rect.height | 0);
+  canvas.width = (view.W * DPR) | 0; canvas.height = (view.H * DPR) | 0;
+  canvas.style.width = view.W + "px"; canvas.style.height = view.H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize); resize();
+
+function toScreen(x, y) { return { x: (x/world.Lx)*view.W, y: (1-y/world.Ly)*view.H }; }
+function toWorld(px, py){ return { x: (px/view.W)*world.Lx, y: 1 - (py/view.H)*world.Ly }; }
+function isInside(x,y){ return x>=0 && x<=world.Lx && y>=0 && y<=world.Ly; }
+function clampToDomain(x,y){ return {x:Math.max(0,Math.min(world.Lx,x)), y:Math.max(0,Math.min(world.Ly,y))}; }
+
+/* ===== Flow field ===== */
+const config = {
+  flowPreset: "meander",
+  steady: false,
+  showArrows: true,
+  timeScale: 1.0,
+  U: 0.6, A: 0.8, omega: 1.2,
+  saddleA: 0.9, swirlO: 2.0,
+  center: { x: 1.0, y: 0.5 },
+};
+function velocityField(x, y, t) {
+  const phase = config.steady ? 0 : config.omega * t;
+  if (config.flowPreset === "meander") {
+    const u = config.U + config.A * Math.cos(Math.PI*y)*Math.sin(Math.PI*x + phase);
+    const v = -config.A * Math.sin(Math.PI*y)*Math.cos(Math.PI*x + phase);
+    return {u,v};
+  }
+  if (config.flowPreset === "saddle") {
+    const a = config.saddleA * (config.steady ? 1 : (1 + 0.6*Math.sin(phase)));
+    return {u:a*x, v:-a*y};
+  }
+  const Ω = config.swirlO * (config.steady ? 1 : (0.6 + 0.4*Math.cos(phase + 0.7)));
+  const dx = x - config.center.x, dy = y - config.center.y;
+  return {u:Ω*dy + config.U, v:-Ω*dx};
+}
+
+/* ===== Arrows ===== */
+function drawArrow(px, py, vx, vy, scale=1) {
+  const len = Math.hypot(vx,vy)*scale; if (len<0.0001) return;
+  const ang = Math.atan2(vy,vx), tx = px + len*Math.cos(ang), ty = py + len*Math.sin(ang);
+  const head = Math.max(6, Math.min(14, len*0.35));
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(tx,ty); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx,ty);
+  ctx.lineTo(tx - head*Math.cos(ang - Math.PI/6), ty - head*Math.sin(ang - Math.PI/6));
+  ctx.lineTo(tx - head*Math.cos(ang + Math.PI/6), ty - head*Math.sin(ang + Math.PI/6));
+  ctx.closePath(); ctx.fill();
+}
+function drawFlowArrows(t){
+  if (!config.showArrows) return;
+  const spacing = Math.max(28, Math.min(view.W, view.H)/20);
+  ctx.save(); ctx.lineWidth=1.2; ctx.strokeStyle="#66aaff"; ctx.fillStyle="#66aaff";
+  for (let py=spacing*0.6; py<view.H; py+=spacing){
+    for (let px=spacing*0.6; px<view.W; px+=spacing){
+      const {x,y} = toWorld(px,py); const {u,v} = velocityField(x,y,sim.time);
+      const s = 18 + 34 * (Math.hypot(u,v) / (config.U + config.A + 1e-3));
+      drawArrow(px,py,u,-v,s);
+    }
+  }
+  ctx.restore();
+}
+
+/* ===== Particles / lines ===== */
+const sim = {
+  time: 0, paused:false, last:performance.now(), dtMax:1/30,
+  trailMax:600,
+  particles: [],
+  streakParticles: [],
+  streakSource: {x:0.3,y:0.5},
+  streakEmitRate: 60,    // particles/s
+  streakOn: false,       // <<< NEW: master switch
+  _emitAcc: 0,
+  maxStreakParticles: 2000,
+  streamlines: []
+};
+
+function rk4Step(x,y,dt,t){
+  const k1=velocityField(x,y,t);
+  const k2=velocityField(x+0.5*dt*k1.u, y+0.5*dt*k1.v, t+0.5*dt);
+  const k3=velocityField(x+0.5*dt*k2.u, y+0.5*dt*k2.v, t+0.5*dt);
+  const k4=velocityField(x+dt*k3.u, y+dt*k3.v, t+dt);
+  const u=(k1.u+2*k2.u+2*k3.u+k4.u)/6, v=(k1.v+2*k2.v+2*k3.v+k4.v)/6;
+  return {x:x+dt*u, y:y+dt*v};
+}
+function traceStreamline(x0, y0, t0, opts = {}) {
+  // March along unit tangent of the instantaneous field at t0.
+  // Stop at boundary or stagnation; build backward and forward halves, then join.
+  const stepLen = opts.stepLen ?? 0.006;        // nominal arclength step (world units)
+  const maxLen  = opts.maxLen  ?? 2.4;          // total length budget
+  const maxSteps = Math.ceil(maxLen / stepLen);
+
+  const EPS_SPEED = 1e-6;
+  const pointsBack = [];
+  const pointsFwd  = [];
+
+  function valid(v) {
+    return Number.isFinite(v.x) && Number.isFinite(v.y);
+  }
+
+  function stepOne(x, y, sign) {
+    // get instantaneous velocity
+    const vel = velocityField(x, y, t0);
+    const s = Math.hypot(vel.u, vel.v);
+
+    if (!Number.isFinite(s) || s < EPS_SPEED) return null;
+
+    // adapt step near low speed to keep arclength approximately constant
+    const h = stepLen * Math.min(1.5, Math.max(0.3, 0.3 + 0.7 * (s / (s + 0.5))));
+
+    // normalized tangent
+    const tx = vel.u / s;
+    const ty = vel.v / s;
+
+    let xn = x + sign * h * tx;
+    let yn = y + sign * h * ty;
+
+    if (!Number.isFinite(xn) || !Number.isFinite(yn)) return null;
+    if (!isInside(xn, yn)) return null;  // stop at domain edges
+
+    return { x: xn, y: yn };
+  }
+
+  // March backward
+  let xb = x0, yb = y0;
+  for (let i = 0; i < maxSteps; i++) {
+    const nxt = stepOne(xb, yb, -1);
+    if (!nxt) break;
+    pointsBack.push(nxt);
+    xb = nxt.x; yb = nxt.y;
+  }
+
+  // March forward
+  let xf = x0, yf = y0;
+  for (let i = 0; i < maxSteps; i++) {
+    const nxt = stepOne(xf, yf, +1);
+    if (!nxt) break;
+    pointsFwd.push(nxt);
+    xf = nxt.x; yf = nxt.y;
+  }
+
+  // Compose: reverse backward so the polyline goes ... -> seed -> ...
+  const out = [];
+  for (let i = pointsBack.length - 1; i >= 0; i--) out.push(pointsBack[i]);
+
+  // seed point (only if valid & inside)
+  if (isInside(x0, y0) && Number.isFinite(x0) && Number.isFinite(y0)) {
+    out.push({ x: x0, y: y0 });
+  }
+
+  for (const p of pointsFwd) out.push(p);
+
+  // Final sanity pass: drop any invalid leftovers
+  return out.filter(valid).slice(0, 1 + pointsBack.length + pointsFwd.length);
+}
+class Particle{
+  constructor(x,y){ this.x=x; this.y=y; this.trail=[{x,y}]; this.alive=true; }
+  step(dt,t){
+    const n=rk4Step(this.x,this.y,dt,t);
+    if(!isInside(n.x,n.y)){ const cl=clampToDomain(n.x,n.y); this.x=cl.x; this.y=cl.y; this.trail.push({x:this.x,y:this.y}); this.alive=false; }
+    else { this.x=n.x; this.y=n.y; this.trail.push({x:this.x,y:this.y}); }
+    if(this.trail.length>sim.trailMax) this.trail.shift();
+  }
+}
+function drawPolyline(points, color, width = 2, alpha = 1.0) {
+  if (!points || points.length < 2) return;
+
+  // filter out any invalid points
+  const clean = [];
+  for (const p of points) {
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    if (!isInside(p.x, p.y)) continue;
+    clean.push(p);
+  }
+  if (clean.length < 2) return;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = width;
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+
+  ctx.beginPath();
+  const p0 = toScreen(clean[0].x, clean[0].y);
+  ctx.moveTo(p0.x, p0.y);
+  for (let i = 1; i < clean.length; i++) {
+    const p = toScreen(clean[i].x, clean[i].y);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function drawDot(x,y,r,c,stroke="#1d3556"){ const p=toScreen(x,y); ctx.save(); ctx.fillStyle=c; ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(p.x,p.y,r,0,2*Math.PI); ctx.fill(); ctx.stroke(); ctx.restore(); }
+
+/* ===== UI / Quiz ===== */
+const ui = { tool:"stream", mode:"explore", quiz:{activeCurve:null,mystery:null,rounds:0,correct:0,streak:0} };
+function setTool(n){ ui.tool=n; inform((n==='stream'?'Streamline':n==='path'?'Path particle':'Streak source')+' tool selected.'); }
+function inform(msg){ document.getElementById("status").textContent = (ui.mode==='quiz'?'Quiz Mode — ':'Explore Mode — ')+msg; }
+
+function enterQuizMode(){
+  ui.mode="quiz"; document.getElementById("modeQuizBtn").classList.add("disabled");
+  document.getElementById("modeExploreBtn").classList.remove("disabled");
+  ["quizStartBtn","quizExplainBtn","guessStreamBtn","guessPathBtn","guessStreakBtn"].forEach(id=>document.getElementById(id).classList.remove("disabled"));
+  config.steady=false; document.getElementById("steadyToggle").checked=false;
+  clearAll(); sim.paused=false; ui.quiz.mystery=null; ui.quiz.activeCurve=null; updateScore();
+  inform("press 'Start Round' and then guess the curve type.");
+}
+function enterExploreMode(){
+  ui.mode="explore"; document.getElementById("modeExploreBtn").classList.add("disabled");
+  document.getElementById("modeQuizBtn").classList.remove("disabled");
+  ["quizStartBtn","quizExplainBtn","guessStreamBtn","guessPathBtn","guessStreakBtn"].forEach(id=>document.getElementById(id).classList.add("disabled"));
+  ui.quiz.mystery=null; ui.quiz.activeCurve=null; hideQuizMsg(); inform("use the tools and click on the canvas.");
+}
+function startQuizRound(){
+  hideQuizMsg(); clearAll();
+  const seeds=[{x:0.35+1.2*Math.random(),y:0.18+0.64*Math.random()},{x:0.2+1.5*Math.random(),y:0.2+0.6*Math.random()}];
+  const seed=seeds[(Math.random()*seeds.length)|0]; const types=["stream","path","streak"]; const pick=types[(Math.random()*types.length)|0];
+  ui.quiz.activeCurve=pick;
+  if (pick==="stream"){
+    sim.streamlines.push({points:traceStreamline(seed.x,seed.y,sim.time,{stepLen:0.007,maxLen:2.6}), t:sim.time});
+  } else if (pick==="path"){
+    sim.particles.push(new Particle(seed.x,seed.y));
+  } else {
+    sim.streakSource=seed;
+    sim.streakOn=true; document.getElementById("streakOnToggle").checked=true; // ensure ON for quiz streak
+  }
+  ui.quiz.mystery={seed}; ui.quiz.rounds++; updateScore(); inform("Round started — watch the curve evolve, then guess.");
+}
+function showQuizMsg(text,good=false){ const box=document.getElementById("quizMsg"); box.textContent=text; box.style.display="block"; box.classList.remove("good","bad"); box.classList.add(good?"good":"bad"); }
+function hideQuizMsg(){ document.getElementById("quizMsg").style.display="none"; }
+function updateScore(){ rounds.textContent=ui.quiz.rounds; correct.textContent=ui.quiz.correct; streak.textContent=ui.quiz.streak; }
+function submitGuess(k){
+  if(ui.mode!=="quiz"||!ui.quiz.activeCurve) return; const ok=(k===ui.quiz.activeCurve);
+  if(ok){ ui.quiz.correct++; ui.quiz.streak++; showQuizMsg("Correct!",true); } else { ui.quiz.streak=0; showQuizMsg(`Not quite. It was a ${({stream:"Streamline",path:"Pathline",streak:"Streakline"})[ui.quiz.activeCurve]}.`); }
+  updateScore(); ui.quiz.activeCurve=null;
+}
+
+/* ===== Controls wiring ===== */
+const flowPresetSel=document.getElementById("flowPreset");
+const steadyToggle=document.getElementById("steadyToggle");
+const arrowsToggle=document.getElementById("arrowsToggle");
+const speedSlider=document.getElementById("speedSlider");
+const streakOnToggle=document.getElementById("streakOnToggle"); // NEW
+
+flowPresetSel.addEventListener("change", e=>{
+  config.flowPreset=e.target.value;
+  if(config.flowPreset==="vortex"){ config.center.x=0.6+0.8*Math.random(); config.center.y=0.3+0.4*Math.random(); }
+  clearAll(); inform("flow preset changed.");
+});
+steadyToggle.addEventListener("change", e=>{ config.steady=!!e.target.checked; inform(config.steady?"steady (time‑independent) flow":"unsteady flow"); });
+arrowsToggle.addEventListener("change", e=>{ config.showArrows=!!e.target.checked; });
+speedSlider.addEventListener("input", e=>{ config.timeScale=parseFloat(e.target.value); });
+streakOnToggle.addEventListener("change", e=>{
+  sim.streakOn=!!e.target.checked;
+  inform(sim.streakOn?"streak source ON":"streak source OFF");
+});
+
+document.getElementById("toolStreamBtn").addEventListener("click", ()=>setTool("stream"));
+document.getElementById("toolPathBtn").addEventListener("click", ()=>setTool("path"));
+document.getElementById("toolStreakBtn").addEventListener("click", ()=>setTool("streak"));
+document.getElementById("clearBtn").addEventListener("click", ()=>{ clearAll(); inform("cleared."); });
+
+document.getElementById("modeExploreBtn").addEventListener("click", ()=>enterExploreMode());
+document.getElementById("modeQuizBtn").addEventListener("click", ()=>enterQuizMode());
+document.getElementById("quizStartBtn").addEventListener("click", ()=>startQuizRound());
+document.getElementById("quizExplainBtn").addEventListener("click", ()=>{
+  const t=ui.quiz.activeCurve; if(!t) return;
+  const expl={stream:"A streamline is a snapshot curve tangent to arrows.",path:"A pathline is one particle’s trajectory.",streak:"A streakline connects particles from a fixed source."};
+  showQuizMsg(expl[t]+" Hint: compare with instantaneous arrows.",true);
+});
+document.getElementById("guessStreamBtn").addEventListener("click", ()=>submitGuess("stream"));
+document.getElementById("guessPathBtn").addEventListener("click", ()=>submitGuess("path"));
+document.getElementById("guessStreakBtn").addEventListener("click", ()=>submitGuess("streak"));
+
+canvas.addEventListener("mousedown", ev=>{
+  const r=canvas.getBoundingClientRect(); const p=toWorld(ev.clientX-r.left, ev.clientY-r.top);
+  if (ui.mode==="quiz") return;
+  if (ui.tool==="stream"){
+    sim.streamlines.push({points:traceStreamline(p.x,p.y,sim.time,{stepLen:0.007,maxLen:2.6}), t:sim.time});
+  } else if (ui.tool==="path"){
+    sim.particles.push(new Particle(p.x,p.y));
+  } else {
+    // only set source location; emission depends on streakOn
+    sim.streakSource={x:p.x,y:p.y};
+    inform(`streak source set at (${p.x.toFixed(2)}, ${p.y.toFixed(2)}) — ${sim.streakOn?"ON":"OFF"}`);
+  }
+});
+
+window.addEventListener("keydown", e=>{
+  if (e.code==="Space"){ sim.paused=!sim.paused; inform(sim.paused?"paused":"running"); e.preventDefault(); }
+  else if (e.key.toLowerCase()==="s"){ setTool("stream"); }
+  else if (e.key.toLowerCase()==="p"){ setTool("path"); }
+  else if (e.key.toLowerCase()==="k"){ setTool("streak"); }
+  else if (e.key.toLowerCase()==="o"){ sim.streakOn=!sim.streakOn; streakOnToggle.checked=sim.streakOn; inform(sim.streakOn?"streak source ON":"streak source OFF"); }
+  else if (e.key.toLowerCase()==="r"){ clearAll(); }
+  else if (e.key==="1"){ submitGuess("stream"); }
+  else if (e.key==="2"){ submitGuess("path"); }
+  else if (e.key==="3"){ submitGuess("streak"); }
+  else if (e.key.toLowerCase()==="q"){ enterQuizMode(); }
+  else if (e.key.toLowerCase()==="e"){ enterExploreMode(); }
+});
+
+
+/* ===== AI Coach (rule-based prototype) ===== */
+(function setupAICoach(){
+  const coachBox = document.getElementById("coachBox");
+  const coachAutoToggle = document.getElementById("coachAutoToggle");
+  const coachExplainBtn = document.getElementById("coachExplainBtn");
+  const coachWhyBtn = document.getElementById("coachWhyBtn");
+
+  function coachShow(text, tone="info"){
+    if (!coachBox) return;
+    coachBox.textContent = text;
+    coachBox.style.display = "block";
+    coachBox.classList.remove("good","bad");
+    if (tone==="good") coachBox.classList.add("good");
+    if (tone==="bad") coachBox.classList.add("bad");
+  }
+
+  function coachHide(){ if (coachBox){ coachBox.style.display="none"; } }
+
+  function speedAt(x,y,t){
+    const v = velocityField(x,y,t);
+    return Math.hypot(v.u, v.v);
+  }
+
+  function divAt(x,y,t){
+    const dx = 1e-3 * world.Lx;
+    const dy = 1e-3 * world.Ly;
+    const u1 = velocityField(x+dx,y,t).u;
+    const u0 = velocityField(x-dx,y,t).u;
+    const v1 = velocityField(x,y+dy,t).v;
+    const v0 = velocityField(x,y-dy,t).v;
+    return (u1-u0)/(2*dx) + (v1-v0)/(2*dy);
+  }
+
+  function snapshot(){
+    return {
+      t: +sim.time.toFixed(3),
+      steady: !!config.steady,
+      flowPreset: config.flowPreset,
+      timeScale: +config.timeScale.toFixed(2),
+      tool: ui.tool,
+      streakOn: sim.streakOn,
+      counts: { streams: sim.streamlines.length, paths: sim.particles.length, streakPts: sim.streakParticles.length }
+    };
+  }
+
+  const coach = {
+    auto: true,
+    last: 0,
+    cooldownMs: 1200,
+
+    observe(evt){
+      if (!this.auto) return;
+      const now = performance.now();
+      if (now - this.last < this.cooldownMs) return;
+      this.last = now;
+
+      try {
+        this._heuristics(evt);
+      } catch (e){
+        // fail silent to avoid disrupting class
+        // console.warn("Coach error", e);
+      }
+    },
+
+    explain(){
+      const s = snapshot();
+      const flowNames = {meander:"Meandering jet", saddle:"Saddle / hyperbolic", vortex:"Swirl + drift"};
+      const line = s.steady
+        ? "Because the flow is steady, a particle's trajectory (pathline) and the instantaneous streamline coincide locally; a continuous source still forms a streakline."
+        : "Because the flow is unsteady, the streamline is a snapshot, while a pathline reflects history. A streakline connects particles emitted from the source at different times.";
+      coachShow(`Scene @t≈${s.t}. Preset: ${flowNames[s.flowPreset]||s.flowPreset}. ${line}`, "good");
+    },
+
+    why(){
+      coachShow("S/P/K: Streamline is tangent to the instantaneous field; Pathline is one particle's trajectory over time; Streakline is the locus of particles that passed a fixed source. In unsteady flow these can differ.", "good");
+    },
+
+    _heuristics(evt){
+      const s = snapshot();
+
+      if (evt && evt.type==="steadyChanged"){
+        coachShow(s.steady
+          ? "Steady flow ON — streamlines and pathlines will largely coincide. Try adding a streak source to see a distinct streakline."
+          : "Steady flow OFF — now streamlines (instantaneous) can differ from pathlines (history) and streaklines (continuous source).");
+        return;
+      }
+
+      if (evt && evt.type==="flowChanged"){
+        if (s.flowPreset==="saddle"){
+          coachShow("Saddle/hyperbolic flow: streamlines separate along one axis and converge along the other. Incompressible ⇒ ∂u/∂x + ∂v/∂y ≈ 0.");
+        } else if (s.flowPreset==="vortex"){
+          coachShow("Swirl + drift: particles orbit the center while drifting right. Compare a streamline snapshot vs. a particle’s looping pathline.");
+        } else {
+          coachShow("Meandering jet: near-sinusoidal shear. Drop a path particle on each side to compare advection speeds.");
+        }
+        return;
+      }
+
+      if (evt && evt.type==="setTool" && evt.tool==="streak" && !s.streakOn){
+        coachShow("You set the streak source tool. Toggle the source ON (checkbox or O key) to start emitting particles.");
+        return;
+      }
+
+      if (evt && evt.type==="canvasClick"){
+        const {x,y,tool} = evt;
+        if (tool==="path"){
+          if (s.steady){
+            coachShow("Nice—path particle dropped. In steady flow, its path will align with a streamline; switch to unsteady to see divergence between S and P.");
+          } else {
+            coachShow("Watch how the pathline differs from the instantaneous streamline because the flow evolves with time.");
+          }
+        } else if (tool==="stream"){
+          // diagnose local speed and divergence
+          const sp = speedAt(x,y,sim.time);
+          const div = divAt(x,y,sim.time);
+          const msg = `Streamline placed. Local speed ≈ ${sp.toFixed(3)}; divergence ≈ ${div.toExponential(2)} (≈0 for incompressible).`;
+          coachShow(msg);
+        } else if (tool==="streak"){
+          coachShow(s.streakOn
+            ? "Streak source moved — watch the locus of emitted particles (streakline) update over time."
+            : "Streak source placed but currently OFF. Toggle ON to emit particles.");
+        }
+        return;
+      }
+
+      if (evt && evt.type==="quizStart"){
+        coachShow("Quiz uses unsteady flow — expect S/P/K to differ. Compare the mystery curve against instantaneous arrows.");
+        return;
+      }
+
+      if (evt && evt.type==="quizGuess"){
+        if (evt.ok){
+          coachShow("Correct! Notice how the curve's behavior matches the definition you chose.", "good");
+        } else {
+          const map = {stream:"streamline (instantaneous)", path:"pathline (one particle)", streak:"streakline (continuous source)"};
+          coachShow(`Not quite—this one was a ${map[evt.correctType]}. Hint: in unsteady flow, the streamline is only a snapshot.`, "bad");
+        }
+        return;
+      }
+
+      if (evt && evt.type==="speedChange"){
+        coachShow("Time scale changed — increasing speed makes differences between S/P/K emerge faster.");
+        return;
+      }
+    }
+  };
+
+  // UI hooks
+  if (coachAutoToggle){
+    coachAutoToggle.addEventListener("change", (e)=>{ coach.auto = !!e.target.checked; if (!coach.auto) coachHide(); });
+  }
+  if (coachExplainBtn) coachExplainBtn.addEventListener("click", ()=>coach.explain());
+  if (coachWhyBtn) coachWhyBtn.addEventListener("click", ()=>coach.why());
+
+  // Wrap core functions so we can observe key learning events
+  const _setTool = setTool;
+  setTool = function(n){ _setTool(n); coach.observe({type:"setTool", tool:n}); };
+
+  const _startQuizRound = startQuizRound;
+  startQuizRound = function(){ _startQuizRound(); coach.observe({type:"quizStart"}); };
+
+  const _submitGuess = submitGuess;
+  submitGuess = function(k){
+    const correctType = ui.quiz.activeCurve;
+    const ok = (k === correctType);
+    _submitGuess(k);
+    coach.observe({type:"quizGuess", ok, guess:k, correctType});
+  };
+
+  // Listen to configuration changes
+  flowPresetSel.addEventListener("change", ()=>coach.observe({type:"flowChanged"}));
+  steadyToggle.addEventListener("change", ()=>coach.observe({type:"steadyChanged"}));
+  speedSlider.addEventListener("input", ()=>coach.observe({type:"speedChange"}));
+  streakOnToggle.addEventListener("change", ()=>coach.observe({type:"streakToggle"}));
+
+  // Observe canvas interactions
+  canvas.addEventListener("mousedown", ev=>{
+    const r=canvas.getBoundingClientRect();
+    const p=toWorld(ev.clientX-r.left, ev.clientY-r.top);
+    // delay a tick so the main handler runs first
+    setTimeout(()=> coach.observe({type:"canvasClick", x:p.x, y:p.y, tool: ui.tool}), 0);
+  });
+
+  // Expose snapshot if needed for external integrations
+  window.__coachSnapshot = snapshot;
+})();
+
+/* ===== Clear / Reset ===== */
+function clearAll(){ sim.particles=[]; sim.streakParticles=[]; sim.streamlines=[]; sim._emitAcc=0; }
+
+/* ===== Main loop ===== */
+function step(now){
+  const dtReal=Math.min(0.05,(now-sim.last)/1000); sim.last=now;
+  if(!sim.paused){
+    const dt=Math.min(sim.dtMax, dtReal*config.timeScale); sim.time+=dt;
+
+    // pathline particles
+    for (const p of sim.particles) if (p.alive) p.step(dt, sim.time);
+
+    // continuous streak emission (ONLY when streakOn)
+    if (sim.streakOn){
+      sim._emitAcc += dt*sim.streakEmitRate;
+      let emitN = Math.floor(sim._emitAcc);
+      if (emitN>0){
+        sim._emitAcc -= emitN;
+        const room=Math.max(0, sim.maxStreakParticles - sim.streakParticles.length);
+        emitN=Math.min(emitN, room);
+        for (let i=0;i<emitN;i++){ sim.streakParticles.push(new Particle(sim.streakSource.x, sim.streakSource.y)); }
+      }
+    }
+
+    // advect streak particles and drop dead ones
+    for (const s of sim.streakParticles) if (s.alive) s.step(dt, sim.time);
+    sim.streakParticles = sim.streakParticles.filter(s=>s.alive);
+  }
+
+  // draw
+  ctx.fillStyle="#0a1522"; ctx.fillRect(0,0,view.W,view.H);
+  // grid (subtle)
+  ctx.save(); ctx.strokeStyle="rgba(80,120,180,0.12)"; ctx.lineWidth=1;
+  const gx=Math.round(view.W/12), gy=Math.round(view.H/8);
+  for(let x=0;x<=view.W;x+=gx){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,view.H); ctx.stroke(); }
+  for(let y=0;y<=view.H;y+=gy){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(view.W,y); ctx.stroke(); }
+  ctx.restore();
+
+  drawFlowArrows(sim.time);
+  drawDot(sim.streakSource.x, sim.streakSource.y, 6, "#ffd166");
+  for (const s of sim.streamlines) drawPolyline(s.points, "#7fffd4", 2.2, 0.95);
+  for (const p of sim.particles){ drawPolyline(p.trail, "#90caf9", 2.0, 0.9); if (p.alive) drawDot(p.x,p.y,3.5,"#90caf9","#1b2f4a"); }
+  if (sim.streakParticles.length>1){
+    const pts=sim.streakParticles.map(p=>({x:p.x,y:p.y}));
+    drawPolyline(pts, "#ff9cdf", 2.0, 0.95);
+    for (let i=0;i<pts.length;i+=Math.max(8,Math.floor(pts.length/80))){ drawDot(pts[i].x,pts[i].y,2.5,"#ff9cdf","#382543"); }
+  }
+
+  requestAnimationFrame(step);
+}
+
+/* ===== Init ===== */
+(function init(){
+  document.getElementById("modeExploreBtn").classList.add("disabled");
+  setTool("stream");
+  // default: source OFF
+  streakOnToggle.checked = sim.streakOn;
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
